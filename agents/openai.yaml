@@ -1,0 +1,4 @@
+interface:
+  display_name: "Setup 3X-UI"
+  short_description: "安装 3X-UI 面板、生成后台文档并管理客户节点"
+  default_prompt: "Use $setup-3xui to install a 3X-UI panel on my VPS and create the management document."

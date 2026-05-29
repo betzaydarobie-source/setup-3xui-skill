@@ -1,0 +1,7 @@
+# Windsurf Legacy 兼容入口
+
+本仓库的标准说明在 `AGENTS.md`。
+
+请先读取 `AGENTS.md`，再执行任何 3X-UI 面板或客户节点相关操作。安装面板时必须使用 `scripts/setup_3xui.py`，添加客户时必须使用 `scripts/add_3xui_client.py`，并遵守敏感信息不入库、不公开后台凭据、节点链接和二维码的规则。
+
+新版 Windsurf 推荐使用 `.windsurf/rules/setup-3xui.md` 或根目录 `AGENTS.md`；本文件仅用于兼容旧版或仍读取 `.windsurfrules` 的环境。

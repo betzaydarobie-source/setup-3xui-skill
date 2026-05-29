@@ -1,0 +1,18 @@
+---
+description: Setup 3X-UI panel and client workflow
+globs: "*"
+alwaysApply: true
+---
+
+# Cursor 项目规则
+
+本仓库用于安装和管理 3X-UI 面板，并生成后台资料和客户节点资料。
+
+请优先阅读并遵守 `AGENTS.md`。安装面板时使用 `scripts/setup_3xui.py`，添加客户时使用 `scripts/add_3xui_client.py`，重新生成后台文档时使用 `scripts/make_3xui_doc.py`。不要临时重写部署或面板 API 流程。
+
+安全要求：
+
+- 运行前确认用户提供必要的 VPS 或面板信息。
+- 优先使用 `VPS_PASSWORD` 环境变量传递 SSH 密码。
+- 不要提交 `outputs/`、`clients/`、后台资料、客户资料、节点链接、二维码、日志、私钥、证书或 `.env` 文件。
+- 后台 URL、用户名和密码只给管理员，客户只接收自己的订阅或 VLESS 资料。
