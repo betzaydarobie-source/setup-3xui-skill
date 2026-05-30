@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from common_3xui import (  # noqa: E402
     PanelSession,
+    archive_management_doc,
     ensure_default_inbound,
     expect_ssh,
     optimize_network,
@@ -42,6 +43,16 @@ def parse_args() -> argparse.Namespace:
         "--no-optimize",
         action="store_true",
         help="Skip the BBR/TCP kernel tuning that is applied by default (borrowed from setup-vps).",
+    )
+    parser.add_argument(
+        "--omit-ssh-password",
+        action="store_true",
+        help="Do NOT write the SSH password into the management doc/JSON (included by default).",
+    )
+    parser.add_argument(
+        "--doc-archive-dir",
+        default="~/Documents/VPS",
+        help="Also save a named copy of the management Word doc here. Empty string disables it.",
     )
     return parser.parse_args()
 
@@ -133,16 +144,20 @@ def main() -> int:
     (out_dir / "verify.log").write_text(verify.stdout, encoding="utf-8")
 
     installed_at = dt.datetime.now().isoformat(timespec="seconds")
+    include_ssh_pw = not args.omit_ssh_password
+    server_info = {
+        "host": args.host,
+        "sshUser": args.user,
+        "sshPort": args.ssh_port,
+        "system": args.system,
+        "serverName": args.server_name,
+        "owner": args.owner,
+        "installedAt": installed_at,
+    }
+    if include_ssh_pw:
+        server_info["sshPassword"] = password
     info = {
-        "server": {
-            "host": args.host,
-            "sshUser": args.user,
-            "sshPort": args.ssh_port,
-            "system": args.system,
-            "serverName": args.server_name,
-            "owner": args.owner,
-            "installedAt": installed_at,
-        },
+        "server": server_info,
         "panel": panel,
         "defaultInbound": default_inbound,
         "optimization": optimization,
@@ -153,7 +168,6 @@ def main() -> int:
             **({"optimizeLog": str(out_dir / "optimize.log")} if optimization else {}),
         },
     }
-    (out_dir / "3xui-panel-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if optimization is None:
         optimize_text = "未启用 (--no-optimize)"
@@ -172,6 +186,10 @@ def main() -> int:
         ("系统版本", args.system or "未填写"),
         ("SSH 用户名", args.user),
         ("SSH 端口", args.ssh_port),
+    ]
+    if include_ssh_pw:
+        fields.append(("SSH 密码", password))
+    fields += [
         ("管理后台地址", panel["url"]),
         ("后台用户名", panel["username"]),
         ("后台密码", panel["password"]),
@@ -180,16 +198,26 @@ def main() -> int:
         ("网络优化", optimize_text),
         ("安装时间", installed_at),
     ]
-    write_management_docx(
-        output_path=out_dir / "3xui-management.docx",
-        title=doc_title,
-        fields=fields,
-        notes=[
-            "后台地址、用户名、密码只给管理员保存，不要发给客户。",
-            "给客户使用时，在客户端页面新增客户，并发客户自己的订阅二维码或 VLESS 链接。",
-            "如果更换服务器，后台地址通常会变化；正式运营建议后续使用域名。",
-        ],
-    )
+    notes = [
+        "后台地址、用户名、密码只给管理员保存，不要发给客户。",
+        "给客户使用时，在客户端页面新增客户，并发客户自己的订阅二维码或 VLESS 链接。",
+        "如果更换服务器，后台地址通常会变化；正式运营建议后续使用域名。",
+    ]
+    if include_ssh_pw:
+        notes.insert(0, "本文档含 SSH root 密码，属于服务器最高权限凭据，务必严格保密，绝不可发给客户。")
+    docx_path = out_dir / "3xui-management.docx"
+    write_management_docx(output_path=docx_path, title=doc_title, fields=fields, notes=notes)
+
+    # Keep one copy in the per-run folder (above) and archive a named copy to a stable
+    # local folder (default ~/Documents/VPS) so every server's backend doc collects there.
+    archive_path = None
+    if args.doc_archive_dir.strip():
+        server_label = args.server_name or args.owner or args.host
+        archive_path = archive_management_doc(docx_path, server_label, args.doc_archive_dir)
+        if archive_path:
+            info["artifacts"]["managementDocxArchive"] = str(archive_path)
+
+    (out_dir / "3xui-panel-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(json.dumps(
         {
@@ -197,6 +225,8 @@ def main() -> int:
             "output_dir": str(out_dir),
             "panel_url": panel["url"],
             "optimization": optimize_text,
+            "sshPasswordInDoc": include_ssh_pw,
+            "managementDocxArchive": str(archive_path) if archive_path else None,
         },
         ensure_ascii=False,
         indent=2,

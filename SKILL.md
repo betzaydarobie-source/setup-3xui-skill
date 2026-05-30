@@ -29,7 +29,7 @@ What the script does:
 - Applies kernel network tuning by default (borrowed from the setup-vps `vless.sh`): enables BBR + fq, enlarges TCP buffers, turns on TCP Fast Open, and sets memory/file-descriptor limits via `/etc/sysctl.d/99-xray-optimization.conf`. The official 3X-UI installer does NOT tune the kernel, so this is what gives a fresh panel node the same open-the-box speed as the one-click VLESS script. Pass `--no-optimize` to skip it.
 - Saves the generated admin URL, username, password, panel port, and API token.
 - Creates a default VLESS Reality inbound on `443` unless `--no-default-inbound` is passed.
-- Writes `3xui-panel-info.json`, `install-3xui.log`, `optimize.log`, `verify.log`, and `3xui-management.docx`.
+- Writes `3xui-panel-info.json`, `install-3xui.log`, `optimize.log`, `verify.log`, and `3xui-management.docx`. The management doc includes the SSH password by default (`--omit-ssh-password` to skip) and a named copy (`<server>-3X-UI后台资料.docx`) is archived to `~/Documents/VPS` (`--doc-archive-dir` to change, empty to disable).
 
 If the user says the server is already in use or might already have a panel, confirm before reinstalling because installing can replace the existing 3X-UI service/configuration.
 
@@ -44,7 +44,7 @@ python3 scripts/make_3xui_doc.py \
   --owner '张三'
 ```
 
-The Word document should contain the server label, who it was built for, server IP, system, SSH username/port, management backend URL, backend username, and backend password. Do not include the SSH password unless the user explicitly asks.
+The Word document contains the server label, who it was built for, server IP, system, SSH username/port, management backend URL, backend username, and backend password. The SSH password is also included by default now (pass `--omit-ssh-password` to leave it out) — which means the doc grants full root access, so keep it strictly admin-only. A named copy (`<server>-3X-UI后台资料.docx`) is also archived to `~/Documents/VPS` by default; override with `--doc-archive-dir` or set it empty to disable.
 
 ## Add A Customer Client
 

@@ -150,7 +150,8 @@ VPS_PASSWORD='<SSH_PASSWORD>' python3 scripts/optimize_3xui.py \
 - 登录面板。
 - 默认创建 VLESS Reality 入站。
 - 保存安装日志、网络优化日志和验证日志。
-- 生成后台管理 Word 文档（含网络优化状态字段）。
+- 生成后台管理 Word 文档（含网络优化状态字段；**默认含 SSH 密码**，可用 `--omit-ssh-password` 关闭；SSH 密码也会写进 `3xui-panel-info.json`）。
+- 默认把后台 Word 按 `<服务器名>-3X-UI后台资料.docx` 归档一份到 `~/Documents/VPS`（用 `--doc-archive-dir` 改目录，留空关闭）。
 
 `add_3xui_client.py` 会执行：
 
@@ -165,7 +166,8 @@ VPS_PASSWORD='<SSH_PASSWORD>' python3 scripts/optimize_3xui.py \
 
 - 读取 `3xui-panel-info.json`。
 - 更新服务器名称和使用对象。
-- 重新生成后台管理 Word 文档。
+- 重新生成后台管理 Word 文档（若 panel-info 里有 `sshPassword` 则一并写入）。
+- 默认同样归档一份到 `~/Documents/VPS`（`--doc-archive-dir` 可改/留空关闭）。
 
 ## 期望输出文件
 
@@ -176,6 +178,8 @@ VPS_PASSWORD='<SSH_PASSWORD>' python3 scripts/optimize_3xui.py \
 - `install-3xui.log`
 - `optimize.log`（未传 `--no-optimize` 时；记录 BBR/sysctl 应用结果）
 - `verify.log`
+
+此外，后台 Word 默认会按 `<服务器名>-3X-UI后台资料.docx` 归档一份到 `~/Documents/VPS`（不在上面这个输出目录里；`--doc-archive-dir` 可改或留空关闭）。
 
 添加客户成功后，客户输出目录通常应该包含：
 

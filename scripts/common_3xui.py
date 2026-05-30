@@ -552,3 +552,26 @@ def write_management_docx(
         zf.writestr("_rels/.rels", rels)
         zf.writestr("word/document.xml", document_xml)
 
+
+def archive_management_doc(
+    src: Path,
+    server_label: str,
+    archive_dir: str = "~/Documents/VPS",
+) -> Path | None:
+    """Drop a second, meaningfully named copy of a management .docx into a stable folder.
+
+    The per-run output folder keeps its own `3xui-management.docx`; this copies it to
+    `<archive_dir>/<server_label>-3X-UI后台资料.docx` so every server's backend doc
+    collects in one place (default ~/Documents/VPS). Returns the destination path, or
+    None if archiving was skipped/failed (never fatal to the install).
+    """
+    try:
+        dest_dir = Path(archive_dir).expanduser()
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r'[\\/:*?"<>|]+', "_", str(server_label or "3X-UI").strip()).strip("._- ") or "3X-UI"
+        dest = dest_dir / f"{safe}-3X-UI后台资料.docx"
+        dest.write_bytes(Path(src).read_bytes())
+        return dest
+    except Exception:
+        return None
+

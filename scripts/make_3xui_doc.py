@@ -12,7 +12,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from common_3xui import load_panel_info, write_management_docx  # noqa: E402
+from common_3xui import archive_management_doc, load_panel_info, write_management_docx  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,6 +21,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--server-name", default="", help="Human-readable server label.")
     parser.add_argument("--owner", default="", help="Who this server is for.")
     parser.add_argument("--output", default="", help="Output .docx path.")
+    parser.add_argument(
+        "--doc-archive-dir",
+        default="~/Documents/VPS",
+        help="Also save a named copy of the management Word doc here. Empty string disables it.",
+    )
     return parser.parse_args()
 
 
@@ -35,6 +40,7 @@ def main() -> int:
     owner = args.owner or server.get("owner") or "未填写"
     output = Path(args.output).expanduser().resolve() if args.output else info_path.parent / "3xui-management.docx"
 
+    ssh_password = server.get("sshPassword", "")
     fields = [
         ("服务器名称", server_name),
         ("使用对象", owner),
@@ -42,26 +48,42 @@ def main() -> int:
         ("系统版本", server.get("system", "未填写")),
         ("SSH 用户名", server.get("sshUser", "root")),
         ("SSH 端口", server.get("sshPort", 22)),
+    ]
+    if ssh_password:
+        fields.append(("SSH 密码", ssh_password))
+    fields += [
         ("管理后台地址", panel["url"]),
         ("后台用户名", panel["username"]),
         ("后台密码", panel["password"]),
         ("面板端口", panel.get("port", "")),
         ("生成时间", dt.datetime.now().isoformat(timespec="seconds")),
     ]
+    notes = [
+        "后台地址、用户名、密码只给管理员保存，不要发给客户。",
+        "客户只接收自己的订阅二维码或 VLESS 节点二维码。",
+    ]
+    if ssh_password:
+        notes.insert(0, "本文档含 SSH root 密码，属于服务器最高权限凭据，务必严格保密，绝不可发给客户。")
     write_management_docx(
         output_path=output,
         title=f"3X-UI 服务器后台资料 - {owner}",
         fields=fields,
-        notes=[
-            "后台地址、用户名、密码只给管理员保存，不要发给客户。",
-            "客户只接收自己的订阅二维码或 VLESS 节点二维码。",
-        ],
+        notes=notes,
     )
+    archive_path = None
+    if args.doc_archive_dir.strip():
+        archive_path = archive_management_doc(output, server_name or owner or server_host, args.doc_archive_dir)
     info.setdefault("server", {})["serverName"] = server_name
     info.setdefault("server", {})["owner"] = owner
     info.setdefault("artifacts", {})["managementDocx"] = str(output)
+    if archive_path:
+        info.setdefault("artifacts", {})["managementDocxArchive"] = str(archive_path)
     info_path.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"ok": True, "docx": str(output)}, ensure_ascii=False, indent=2))
+    print(json.dumps(
+        {"ok": True, "docx": str(output), "managementDocxArchive": str(archive_path) if archive_path else None},
+        ensure_ascii=False,
+        indent=2,
+    ))
     return 0
 
 
