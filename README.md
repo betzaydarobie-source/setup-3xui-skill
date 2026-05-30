@@ -100,11 +100,32 @@ VPS_PASSWORD='这里换成你的SSH密码' python3 scripts/setup_3xui.py \
 1. 通过 SSH 登录 VPS。
 2. 执行官方 3X-UI 安装器。
 3. 设置或生成面板端口。
-4. 保存后台地址、用户名、密码、端口和 API token。
-5. 默认创建 VLESS Reality `443` 入站，除非传入 `--no-default-inbound`。
-6. 生成 `3xui-panel-info.json`、`install-3xui.log`、`verify.log` 和 `3xui-management.docx`。
+4. 默认进行内核网络优化（借鉴自 setup-vps 的 `vless.sh`）：开启 BBR + fq、放大 TCP 缓冲、TCP Fast Open、内存与文件描述符调优，写入 `/etc/sysctl.d/99-xray-optimization.conf` 并加载 `tcp_bbr`/`sch_fq`。官方安装器本身不调内核，这一步让面板节点开箱即拥有和一键 VLESS 脚本同级的速度。传 `--no-optimize` 可跳过。
+5. 保存后台地址、用户名、密码、端口和 API token。
+6. 默认创建 VLESS Reality `443` 入站，除非传入 `--no-default-inbound`。
+7. 生成 `3xui-panel-info.json`、`install-3xui.log`、`optimize.log`、`verify.log` 和 `3xui-management.docx`。
+
+> 说明：内核优化是借鉴同系列 setup-vps 的 `vless.sh` 移植进来的增强，上游 `mhsanaei/3x-ui` 官方安装器本身并不包含它。如果不需要，安装时加 `--no-optimize` 即可跳过。
 
 如果服务器已经在使用，或用户说可能已有面板，必须先确认是否允许重装。安装 3X-UI 可能替换已有服务或配置。
+
+## 给已有服务器单独补网络优化（不重装）
+
+如果服务器已经装好 3X-UI、客户也在用了，只想补上 BBR/TCP 内核优化，用这个脚本，不需要重装：
+
+```bash
+VPS_PASSWORD='这里换成你的SSH密码' python3 scripts/optimize_3xui.py \
+  --panel-info "/absolute/path/to/3xui-panel-info.json"
+```
+
+它只修改内核 sysctl 参数并加载 bbr/fq 模块，**不会登录面板，也不会改动 xray 配置、UUID、端口、Reality 密钥或任何 VLESS/订阅链接**，所以已经发给客户的链接继续有效。脚本会：
+
+1. 先把已有的 `99-xray-optimization.conf` 备份成 `.bak`。
+2. 应用优化（BBR + fq + TCP / 内存 / 文件描述符调优）。
+3. 确认 `x-ui` 服务仍在运行。
+4. 写入 `optimize-<时间戳>.log`。
+
+想回滚就加 `--revert`（删除优化文件，拥塞算法重置为 cubic）。也可以不带 `--panel-info`，改用 `--host / --user / --ssh-port` 直接指定服务器。
 
 ## 重新生成后台 Word 文档
 

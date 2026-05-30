@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import datetime as _dt
 import html
 import http.cookiejar
@@ -24,6 +25,58 @@ from typing import Any
 
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+# Kernel/network tuning borrowed from the setup-vps skill (vless.sh `optimize_network`).
+# The official 3X-UI installer does NOT tune the kernel, so a fresh panel node has no
+# BBR/buffer tuning out of the box. Applying this drop-in gives the 3X-UI node the same
+# open-the-box speed profile as the one-click VLESS script: BBR + fq + enlarged TCP
+# buffers + TCP Fast Open + sane keepalive/timeout + memory and file-descriptor limits.
+NETWORK_SYSCTL = """# Xray/3X-UI network optimization (borrowed from setup-vps vless.sh)
+# TCP optimization
+net.core.rmem_default = 262144
+net.core.rmem_max = 16777216
+net.core.wmem_default = 262144
+net.core.wmem_max = 16777216
+net.core.netdev_max_backlog = 5000
+net.core.netdev_budget = 600
+net.ipv4.tcp_rmem = 4096 65536 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_keepalive_time = 600
+net.ipv4.tcp_keepalive_probes = 3
+net.ipv4.tcp_keepalive_intvl = 15
+net.ipv4.tcp_retries2 = 5
+net.ipv4.tcp_fin_timeout = 10
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.ip_local_port_range = 10240 65535
+net.ipv4.tcp_max_tw_buckets = 5000
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_timestamps = 1
+net.ipv4.tcp_sack = 1
+net.ipv4.tcp_fack = 1
+net.ipv4.tcp_low_latency = 1
+net.ipv4.tcp_adv_win_scale = 2
+net.ipv4.tcp_moderate_rcvbuf = 1
+net.ipv4.route.flush = 1
+
+# BBR congestion control
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+
+# Memory optimization
+vm.swappiness = 10
+vm.dirty_ratio = 15
+vm.dirty_background_ratio = 5
+vm.overcommit_memory = 1
+
+# File descriptor optimization
+fs.file-max = 1000000
+fs.inotify.max_user_instances = 8192
+fs.inotify.max_user_watches = 524288
+"""
 
 
 def strip_ansi(text: str) -> str:
@@ -80,6 +133,47 @@ exit [lindex $result 3]
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         check=False,
+    )
+
+
+def optimize_network(
+    *,
+    host: str,
+    user: str,
+    ssh_port: int,
+    password: str,
+    timeout: int = 120,
+) -> subprocess.CompletedProcess[str]:
+    """Apply BBR + TCP/memory/fd tuning on the VPS via an idempotent sysctl drop-in.
+
+    Ships NETWORK_SYSCTL as base64 so multi-line content survives the
+    repr -> json.dumps -> Tcl -> remote-shell quoting chain without any escaping
+    surprises, then reloads sysctl and loads the bbr/fq modules. Re-running it
+    just rewrites the same drop-in file, so it is safe to call repeatedly.
+    """
+    payload = base64.b64encode(NETWORK_SYSCTL.encode("utf-8")).decode("ascii")
+    # Order matters: load the bbr/fq modules BEFORE applying sysctl. On stock
+    # Ubuntu kernels tcp_bbr is not preloaded (tcp_available_congestion_control
+    # shows only "reno cubic"), so applying `tcp_congestion_control = bbr` first
+    # could fail. modprobe first guarantees bbr is available when sysctl sets it.
+    remote_command = "bash -lc " + repr(
+        f"echo '{payload}' | base64 -d > /etc/sysctl.d/99-xray-optimization.conf; "
+        "modprobe tcp_bbr >/dev/null 2>&1 || true; "
+        "modprobe sch_fq >/dev/null 2>&1 || true; "
+        "sysctl --system >/dev/null 2>&1 || "
+        "sysctl -p /etc/sysctl.d/99-xray-optimization.conf >/dev/null 2>&1 || true; "
+        "echo '----- optimization result -----'; "
+        "sysctl net.ipv4.tcp_congestion_control net.core.default_qdisc net.ipv4.tcp_fastopen 2>/dev/null || true; "
+        "(lsmod | grep -q '^tcp_bbr' && echo 'tcp_bbr module: loaded') "
+        "|| echo 'tcp_bbr module: builtin or unavailable'"
+    )
+    return expect_ssh(
+        host=host,
+        user=user,
+        ssh_port=ssh_port,
+        password=password,
+        remote_command=remote_command,
+        timeout=timeout,
     )
 
 

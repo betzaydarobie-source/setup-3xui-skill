@@ -26,9 +26,10 @@ What the script does:
 
 - Logs in over SSH and runs the official 3X-UI installer.
 - Uses SQLite, a generated or provided panel port, and Let's Encrypt IP HTTPS when available.
+- Applies kernel network tuning by default (borrowed from the setup-vps `vless.sh`): enables BBR + fq, enlarges TCP buffers, turns on TCP Fast Open, and sets memory/file-descriptor limits via `/etc/sysctl.d/99-xray-optimization.conf`. The official 3X-UI installer does NOT tune the kernel, so this is what gives a fresh panel node the same open-the-box speed as the one-click VLESS script. Pass `--no-optimize` to skip it.
 - Saves the generated admin URL, username, password, panel port, and API token.
 - Creates a default VLESS Reality inbound on `443` unless `--no-default-inbound` is passed.
-- Writes `3xui-panel-info.json`, `install-3xui.log`, `verify.log`, and `3xui-management.docx`.
+- Writes `3xui-panel-info.json`, `install-3xui.log`, `optimize.log`, `verify.log`, and `3xui-management.docx`.
 
 If the user says the server is already in use or might already have a panel, confirm before reinstalling because installing can replace the existing 3X-UI service/configuration.
 
@@ -72,6 +73,31 @@ Outputs include:
 - optional `subscription-links.txt` and `subscription-qr.png` if the panel exposes subscription URLs
 - `client-summary.json`
 - `client-node.docx`
+
+## Optimize An Existing Server (No Reinstall)
+
+Use this when the user already has a working 3X-UI panel (clients may already be
+connected) and only wants the BBR/TCP kernel tuning added, without reinstalling.
+It is safe for live clients: it only changes kernel sysctl params and loads the
+bbr/fq modules. It does NOT log into the panel and does NOT touch the xray
+config, inbounds, client UUIDs, Reality keys, ports, or any VLESS/subscription
+links, so links that were already handed out keep working unchanged.
+
+```bash
+VPS_PASSWORD='<SSH_PASSWORD>' python3 scripts/optimize_3xui.py \
+  --panel-info '/absolute/path/to/3xui-panel-info.json'
+```
+
+Or point it at a server directly:
+
+```bash
+VPS_PASSWORD='<SSH_PASSWORD>' python3 scripts/optimize_3xui.py \
+  --host 192.0.2.10 --user root --ssh-port 22
+```
+
+It backs up any existing `99-xray-optimization.conf` to `.bak`, applies the
+tuning, then confirms `x-ui` is still active. Pass `--revert` to undo it
+(removes the drop-in and resets to cubic/fq_codel). Writes `optimize-<ts>.log`.
 
 ## Final Response
 

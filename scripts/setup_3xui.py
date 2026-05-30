@@ -18,6 +18,7 @@ from common_3xui import (  # noqa: E402
     PanelSession,
     ensure_default_inbound,
     expect_ssh,
+    optimize_network,
     parse_panel_install_log,
     require_password,
     write_management_docx,
@@ -37,6 +38,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--inbound-port", type=int, default=443, help="Default VLESS Reality inbound port.")
     parser.add_argument("--inbound-remark", default="", help="Default inbound remark.")
     parser.add_argument("--no-default-inbound", action="store_true", help="Only install panel; do not create vless:443.")
+    parser.add_argument(
+        "--no-optimize",
+        action="store_true",
+        help="Skip the BBR/TCP kernel tuning that is applied by default (borrowed from setup-vps).",
+    )
     return parser.parse_args()
 
 
@@ -66,6 +72,28 @@ def main() -> int:
     if install_result.returncode != 0:
         print(install_log)
         raise SystemExit(f"3X-UI installation failed with exit code {install_result.returncode}.")
+
+    # Borrowed from setup-vps (vless.sh): the official 3X-UI installer does not tune the
+    # kernel, so apply the same BBR/TCP/memory optimization here for open-the-box speed.
+    optimization = None
+    if not args.no_optimize:
+        opt = optimize_network(
+            host=args.host,
+            user=args.user,
+            ssh_port=args.ssh_port,
+            password=password,
+            timeout=120,
+        )
+        opt_out = opt.stdout or ""
+        (out_dir / "optimize.log").write_text(opt_out, encoding="utf-8")
+        optimization = {
+            "applied": opt.returncode == 0,
+            "bbrActive": "tcp_congestion_control = bbr" in opt_out,
+            "qdiscFq": "default_qdisc = fq" in opt_out,
+            "fastOpen": "tcp_fastopen = 3" in opt_out,
+            "confPath": "/etc/sysctl.d/99-xray-optimization.conf",
+            "log": str(out_dir / "optimize.log"),
+        }
 
     parsed = parse_panel_install_log(install_log)
     panel = {
@@ -117,13 +145,24 @@ def main() -> int:
         },
         "panel": panel,
         "defaultInbound": default_inbound,
+        "optimization": optimization,
         "artifacts": {
             "installLog": str(out_dir / "install-3xui.log"),
             "verifyLog": str(out_dir / "verify.log"),
             "managementDocx": str(out_dir / "3xui-management.docx"),
+            **({"optimizeLog": str(out_dir / "optimize.log")} if optimization else {}),
         },
     }
     (out_dir / "3xui-panel-info.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if optimization is None:
+        optimize_text = "未启用 (--no-optimize)"
+    elif optimization["bbrActive"]:
+        optimize_text = "已启用 BBR + FQ + TCP/内存调优"
+    elif optimization["applied"]:
+        optimize_text = "已写入配置，但未确认 BBR 生效（内核可能需重启或不支持）"
+    else:
+        optimize_text = "尝试失败，请查看 optimize.log"
 
     doc_title = f"3X-UI 服务器后台资料 - {args.owner or args.server_name or args.host}"
     fields = [
@@ -138,6 +177,7 @@ def main() -> int:
         ("后台密码", panel["password"]),
         ("面板端口", panel["port"]),
         ("默认入站", f"vless:{args.inbound_port}" if not args.no_default_inbound else "未创建"),
+        ("网络优化", optimize_text),
         ("安装时间", installed_at),
     ]
     write_management_docx(
@@ -151,7 +191,16 @@ def main() -> int:
         ],
     )
 
-    print(json.dumps({"ok": True, "output_dir": str(out_dir), "panel_url": panel["url"]}, ensure_ascii=False, indent=2))
+    print(json.dumps(
+        {
+            "ok": True,
+            "output_dir": str(out_dir),
+            "panel_url": panel["url"],
+            "optimization": optimize_text,
+        },
+        ensure_ascii=False,
+        indent=2,
+    ))
     return 0
 
 

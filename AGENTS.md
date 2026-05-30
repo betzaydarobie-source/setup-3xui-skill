@@ -110,6 +110,15 @@ python3 scripts/make_3xui_doc.py \
   --owner "张三"
 ```
 
+给已经装好、但当时没调内核的旧服务器单独补网络优化（不重装、不动面板和客户链接）时使用：
+
+```bash
+VPS_PASSWORD='<SSH_PASSWORD>' python3 scripts/optimize_3xui.py \
+  --panel-info "/absolute/path/to/3xui-panel-info.json"
+```
+
+这个脚本只改内核 sysctl 并加载 bbr/fq 模块，不登录面板、不改 xray 配置/UUID/端口/Reality 密钥，已发出的客户 VLESS/订阅链接照常可用。它会先把已有的 `99-xray-optimization.conf` 备份成 `.bak`，应用后确认 `x-ui` 仍在运行，并写入 `optimize-<时间戳>.log`。传 `--revert` 可回滚（删除优化文件并重置为 cubic/fq_codel）。
+
 ## 标准安装流程
 
 1. 收集并确认 VPS 主机、SSH 用户名、SSH 密码、SSH 端口和系统版本。
@@ -136,11 +145,12 @@ python3 scripts/make_3xui_doc.py \
 
 - 使用 `ssh` 和 `expect` 连接 VPS。
 - 运行官方 3X-UI 安装器。
+- 默认进行内核网络优化（借鉴自 setup-vps 的 `vless.sh`）：写入 `/etc/sysctl.d/99-xray-optimization.conf`，开启 BBR + fq + 放大 TCP 缓冲 + TCP Fast Open + 内存/文件描述符调优，并加载 `tcp_bbr`/`sch_fq` 模块。可用 `--no-optimize` 跳过。
 - 解析后台地址、用户名、密码、端口、WebBasePath 和 API token。
 - 登录面板。
 - 默认创建 VLESS Reality 入站。
-- 保存安装日志和验证日志。
-- 生成后台管理 Word 文档。
+- 保存安装日志、网络优化日志和验证日志。
+- 生成后台管理 Word 文档（含网络优化状态字段）。
 
 `add_3xui_client.py` 会执行：
 
@@ -164,6 +174,7 @@ python3 scripts/make_3xui_doc.py \
 - `3xui-panel-info.json`
 - `3xui-management.docx`
 - `install-3xui.log`
+- `optimize.log`（未传 `--no-optimize` 时；记录 BBR/sysctl 应用结果）
 - `verify.log`
 
 添加客户成功后，客户输出目录通常应该包含：
