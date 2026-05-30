@@ -146,6 +146,7 @@ VPS_PASSWORD='<SSH_PASSWORD>' python3 scripts/optimize_3xui.py \
 - 使用 `ssh` 和 `expect` 连接 VPS。
 - 运行官方 3X-UI 安装器。
 - 默认进行内核网络优化（借鉴自 setup-vps 的 `vless.sh`）：写入 `/etc/sysctl.d/99-xray-optimization.conf`，开启 BBR + fq + 放大 TCP 缓冲 + TCP Fast Open + 内存/文件描述符调优，并加载 `tcp_bbr`/`sch_fq` 模块。可用 `--no-optimize` 跳过。
+- 默认部署 Karing 兼容订阅适配器：在订阅服务（`:2096`）前起一个纯 stdlib 反向代理 `:2097`，把 Karing 更新检查的 HEAD 请求改成返回 200（原版订阅服务对 HEAD 返回 404），并从 Clash YAML 剥掉 `packet-encoding: none`；同时开启订阅服务并把 `subURI`/`subClashURI` 设成 `:2097`，让面板对每个客户端自动给出 `:2097` 订阅地址。订阅端口 `subPort` 保持 `2096` 不变——**绝不可改成 `2097`**（会和适配器冲突导致 x-ui 崩溃、客户掉线）。可用 `--no-karing-adapter` 跳过。
 - 解析后台地址、用户名、密码、端口、WebBasePath 和 API token。
 - 登录面板。
 - 默认创建 VLESS Reality 入站。
@@ -177,6 +178,7 @@ VPS_PASSWORD='<SSH_PASSWORD>' python3 scripts/optimize_3xui.py \
 - `3xui-management.docx`
 - `install-3xui.log`
 - `optimize.log`（未传 `--no-optimize` 时；记录 BBR/sysctl 应用结果）
+- `karing-adapter.log`（未传 `--no-karing-adapter` 时；记录 Karing 适配器部署与订阅地址设置结果）
 - `verify.log`
 
 此外，后台 Word 默认会按 `<服务器名>-3X-UI后台资料.docx` 归档一份到 `~/Documents/VPS`（不在上面这个输出目录里；`--doc-archive-dir` 可改或留空关闭）。

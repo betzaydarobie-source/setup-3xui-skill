@@ -27,9 +27,10 @@ What the script does:
 - Logs in over SSH and runs the official 3X-UI installer.
 - Uses SQLite, a generated or provided panel port, and Let's Encrypt IP HTTPS when available.
 - Applies kernel network tuning by default (borrowed from the setup-vps `vless.sh`): enables BBR + fq, enlarges TCP buffers, turns on TCP Fast Open, and sets memory/file-descriptor limits via `/etc/sysctl.d/99-xray-optimization.conf`. The official 3X-UI installer does NOT tune the kernel, so this is what gives a fresh panel node the same open-the-box speed as the one-click VLESS script. Pass `--no-optimize` to skip it.
+- Deploys a Karing-compatibility subscription adapter by default: a tiny stdlib reverse proxy on `:2097` in front of the 3X-UI sub server (`:2096`) that makes Karing's HEAD update check return 200 (the stock sub server 404s on HEAD) and strips `packet-encoding: none` from Clash YAML. It also enables the sub server and sets `subURI`/`subClashURI` so the panel hands out `:2097` subscription URLs for every client. The panel's `subPort` stays `2096` — never set it to `2097`, which collides with the adapter and crash-loops x-ui. Pass `--no-karing-adapter` to skip it.
 - Saves the generated admin URL, username, password, panel port, and API token.
 - Creates a default VLESS Reality inbound on `443` unless `--no-default-inbound` is passed.
-- Writes `3xui-panel-info.json`, `install-3xui.log`, `optimize.log`, `verify.log`, and `3xui-management.docx`. The management doc includes the SSH password by default (`--omit-ssh-password` to skip) and a named copy (`<server>-3X-UI后台资料.docx`) is archived to `~/Documents/VPS` (`--doc-archive-dir` to change, empty to disable).
+- Writes `3xui-panel-info.json`, `install-3xui.log`, `optimize.log`, `karing-adapter.log`, `verify.log`, and `3xui-management.docx`. The management doc includes the SSH password by default (`--omit-ssh-password` to skip) and a named copy (`<server>-3X-UI后台资料.docx`) is archived to `~/Documents/VPS` (`--doc-archive-dir` to change, empty to disable).
 
 If the user says the server is already in use or might already have a panel, confirm before reinstalling because installing can replace the existing 3X-UI service/configuration.
 

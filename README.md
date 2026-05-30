@@ -101,11 +101,12 @@ VPS_PASSWORD='这里换成你的SSH密码' python3 scripts/setup_3xui.py \
 2. 执行官方 3X-UI 安装器。
 3. 设置或生成面板端口。
 4. 默认进行内核网络优化（借鉴自 setup-vps 的 `vless.sh`）：开启 BBR + fq、放大 TCP 缓冲、TCP Fast Open、内存与文件描述符调优，写入 `/etc/sysctl.d/99-xray-optimization.conf` 并加载 `tcp_bbr`/`sch_fq`。官方安装器本身不调内核，这一步让面板节点开箱即拥有和一键 VLESS 脚本同级的速度。传 `--no-optimize` 可跳过。
-5. 保存后台地址、用户名、密码、端口和 API token。
-6. 默认创建 VLESS Reality `443` 入站，除非传入 `--no-default-inbound`。
-7. 生成 `3xui-panel-info.json`、`install-3xui.log`、`optimize.log`、`verify.log` 和 `3xui-management.docx`。
+5. 默认部署 Karing 兼容订阅适配器：在订阅服务（`:2096`）前起一个纯 stdlib 反向代理 `:2097`，把 Karing 更新检查的 HEAD 请求改成返回 200（原版订阅服务对 HEAD 返回 404），并从 Clash YAML 剥掉 `packet-encoding: none`；同时开启订阅服务并把 `subURI`/`subClashURI` 设成 `:2097`，让面板对每个客户端自动给出 `:2097` 订阅地址。订阅端口 `subPort` 保持 `2096` 不变——**绝不可改成 `2097`**（会和适配器冲突导致 x-ui 崩溃、客户掉线）。传 `--no-karing-adapter` 可跳过。
+6. 保存后台地址、用户名、密码、端口和 API token。
+7. 默认创建 VLESS Reality `443` 入站，除非传入 `--no-default-inbound`。
+8. 生成 `3xui-panel-info.json`、`install-3xui.log`、`optimize.log`、`karing-adapter.log`、`verify.log` 和 `3xui-management.docx`。
 
-> 说明：内核优化是借鉴同系列 setup-vps 的 `vless.sh` 移植进来的增强，上游 `mhsanaei/3x-ui` 官方安装器本身并不包含它。如果不需要，安装时加 `--no-optimize` 即可跳过。
+> 说明：内核优化和 Karing 适配器都是借鉴/扩展同系列 setup-vps 思路移植进来的增强，上游 `mhsanaei/3x-ui` 官方安装器本身并不包含它们。如不需要，安装时分别加 `--no-optimize` / `--no-karing-adapter` 即可跳过。
 
 如果服务器已经在使用，或用户说可能已有面板，必须先确认是否允许重装。安装 3X-UI 可能替换已有服务或配置。
 

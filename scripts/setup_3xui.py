@@ -17,6 +17,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from common_3xui import (  # noqa: E402
     PanelSession,
     archive_management_doc,
+    deploy_karing_adapter,
     ensure_default_inbound,
     expect_ssh,
     optimize_network,
@@ -43,6 +44,12 @@ def parse_args() -> argparse.Namespace:
         "--no-optimize",
         action="store_true",
         help="Skip the BBR/TCP kernel tuning that is applied by default (borrowed from setup-vps).",
+    )
+    parser.add_argument(
+        "--no-karing-adapter",
+        action="store_true",
+        help="Skip the Karing-compatibility subscription adapter that is deployed by default "
+        "(adapter on :2097 in front of the sub server; enables sub + advertises :2097 URLs).",
     )
     parser.add_argument(
         "--omit-ssh-password",
@@ -119,11 +126,32 @@ def main() -> int:
     }
 
     default_inbound = None
-    if not args.no_default_inbound:
+    karing_adapter = None
+    need_session = (not args.no_default_inbound) or (not args.no_karing_adapter)
+    if need_session:
         session = PanelSession(panel["url"], panel["username"], panel["password"])
         session.login()
-        remark = args.inbound_remark or f"US-Reality-{args.host}"
-        default_inbound = ensure_default_inbound(session, args.host, args.inbound_port, remark)
+        if not args.no_default_inbound:
+            remark = args.inbound_remark or f"US-Reality-{args.host}"
+            default_inbound = ensure_default_inbound(session, args.host, args.inbound_port, remark)
+        # Karing-compatibility subscription adapter (default on). Runs AFTER the default
+        # inbound exists: it enables the sub server + sets subURI to :2097 and restarts
+        # x-ui (the inbound is already persisted, so the restart is safe). Never fatal.
+        if not args.no_karing_adapter:
+            try:
+                karing_adapter = deploy_karing_adapter(
+                    host=args.host,
+                    user=args.user,
+                    ssh_port=args.ssh_port,
+                    password=password,
+                    session=session,
+                    public_host=args.host,
+                )
+            except Exception as exc:  # an adapter failure must not fail the whole install
+                karing_adapter = {"deployed": False, "error": repr(exc)}
+            (out_dir / "karing-adapter.log").write_text(
+                json.dumps(karing_adapter, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
     verify_command = (
         "bash -lc "
@@ -161,11 +189,13 @@ def main() -> int:
         "panel": panel,
         "defaultInbound": default_inbound,
         "optimization": optimization,
+        "karingAdapter": karing_adapter,
         "artifacts": {
             "installLog": str(out_dir / "install-3xui.log"),
             "verifyLog": str(out_dir / "verify.log"),
             "managementDocx": str(out_dir / "3xui-management.docx"),
             **({"optimizeLog": str(out_dir / "optimize.log")} if optimization else {}),
+            **({"karingAdapterLog": str(out_dir / "karing-adapter.log")} if karing_adapter else {}),
         },
     }
 
@@ -177,6 +207,16 @@ def main() -> int:
         optimize_text = "已写入配置，但未确认 BBR 生效（内核可能需重启或不支持）"
     else:
         optimize_text = "尝试失败，请查看 optimize.log"
+
+    if karing_adapter is None:
+        karing_text = "未启用 (--no-karing-adapter)"
+    elif karing_adapter.get("deployed"):
+        karing_text = (
+            f"已启用（适配器 :{karing_adapter['listenPort']} → 订阅服务 :{karing_adapter['upstreamPort']}；"
+            f"面板订阅地址自动用 :{karing_adapter['listenPort']}，兼容 Karing）"
+        )
+    else:
+        karing_text = f"尝试失败，请查看 karing-adapter.log（{karing_adapter.get('error', '见日志')}）"
 
     doc_title = f"3X-UI 服务器后台资料 - {args.owner or args.server_name or args.host}"
     fields = [
@@ -196,6 +236,7 @@ def main() -> int:
         ("面板端口", panel["port"]),
         ("默认入站", f"vless:{args.inbound_port}" if not args.no_default_inbound else "未创建"),
         ("网络优化", optimize_text),
+        ("Karing 订阅适配器", karing_text),
         ("安装时间", installed_at),
     ]
     notes = [
@@ -205,6 +246,13 @@ def main() -> int:
     ]
     if include_ssh_pw:
         notes.insert(0, "本文档含 SSH root 密码，属于服务器最高权限凭据，务必严格保密，绝不可发给客户。")
+    if karing_adapter and karing_adapter.get("deployed"):
+        notes.append(
+            f"Karing 适配器占用端口 {karing_adapter['listenPort']}；订阅端口(subPort)必须保持 "
+            f"{karing_adapter['upstreamPort']} 不变，绝不可改成 {karing_adapter['listenPort']}"
+            "（否则与适配器冲突，x-ui 会崩溃、客户掉线）。新加客户端时面板会自动给出 "
+            f":{karing_adapter['listenPort']} 的订阅地址，可直接导入 Karing。"
+        )
     docx_path = out_dir / "3xui-management.docx"
     write_management_docx(output_path=docx_path, title=doc_title, fields=fields, notes=notes)
 
@@ -225,6 +273,7 @@ def main() -> int:
             "output_dir": str(out_dir),
             "panel_url": panel["url"],
             "optimization": optimize_text,
+            "karingAdapter": karing_text,
             "sshPasswordInDoc": include_ssh_pw,
             "managementDocxArchive": str(archive_path) if archive_path else None,
         },
