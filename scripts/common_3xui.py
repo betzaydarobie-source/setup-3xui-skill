@@ -333,13 +333,22 @@ def deploy_karing_adapter(
     public_host = (public_host or host).strip() or host
 
     # 1) Read live sub settings so the adapter is templated to THIS panel.
+    #    3X-UI 3.4.x moved the settings API under /panel/api/setting/all; older
+    #    panels (<=3.2.x) serve it at /panel/setting/all. Try the new path first
+    #    and fall back, so the adapter deploys on both.
     settings: dict[str, Any] = {}
-    try:
-        st = session.post_form("/panel/setting/all")
-        if isinstance(st, dict):
+    last_exc: Exception | None = None
+    for _ep in ("/panel/api/setting/all", "/panel/setting/all"):
+        try:
+            st = session.post_form(_ep)
+        except Exception as exc:
+            last_exc = exc
+            continue
+        if isinstance(st, dict) and st.get("success"):
             settings = st.get("obj") or {}
-    except Exception as exc:
-        return {"deployed": False, "error": f"could not read panel settings: {exc!r}"}
+            break
+    else:
+        return {"deployed": False, "error": f"could not read panel settings: {last_exc!r}"}
 
     upstream_port = int(settings.get("subPort") or 2096)
     if listen_port == upstream_port:
